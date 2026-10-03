@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mis tareas</title>
+    <style>
+      :root {
+        --bg: #eef2f1;
+        --card: #ffffff;
+        --ink: #1f2d2a;
+        --muted: #6b7b77;
+        --accent: #1f7a6d;
+        --accent-ink: #ffffff;
+        --line: #d9e2e0;
+        --danger: #b3412f;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14201e;
+          --card: #1c2b28;
+          --ink: #e6efed;
+          --muted: #8fa39e;
+          --accent: #3fb5a3;
+          --accent-ink: #0d1a18;
+          --line: #2c3f3b;
+          --danger: #e07a67;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        padding: 40px 16px;
+      }
+      main {
+        max-width: 560px;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 2rem;
+        margin: 0 0 4px;
+        letter-spacing: -0.02em;
+      }
+      #count {
+        color: var(--muted);
+        margin: 0 0 24px;
+      }
+      form {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 20px;
+      }
+      input[type="text"] {
+        flex: 1;
+        padding: 12px 14px;
+        font-size: 1rem;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--card);
+        color: var(--ink);
+      }
+      button {
+        font: inherit;
+        cursor: pointer;
+        border-radius: 8px;
+        border: 1px solid transparent;
+      }
+      button.add {
+        padding: 12px 18px;
+        background: var(--accent);
+        color: var(--accent-ink);
+        font-weight: 600;
+      }
+      :focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      li {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+      li:last-child {
+        border-bottom: 0;
+      }
+      li span {
+        flex: 1;
+        word-break: break-word;
+      }
+      li.done span {
+        text-decoration: line-through;
+        color: var(--muted);
+      }
+      input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        accent-color: var(--accent);
+      }
+      button.del {
+        background: none;
+        color: var(--danger);
+        padding: 6px 10px;
+      }
+      button.del:hover {
+        border-color: var(--danger);
+      }
+      .empty {
+        padding: 28px 16px;
+        text-align: center;
+        color: var(--muted);
+      }
+      #error {
+        color: var(--danger);
+        min-height: 1.4em;
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Mis tareas</h1>
+      <p id="count"></p>
+      <form id="form">
+        <input
+          type="text"
+          id="title"
+          placeholder="Escribe una tarea nueva"
+          maxlength="255"
+          required
+          aria-label="Nueva tarea"
+        />
+        <button class="add" type="submit">Agregar tarea</button>
+      </form>
+      <ul id="list"></ul>
+      <div id="error" role="alert"></div>
+    </main>
+
+    <script>
+      // Si abres el archivo directo (file://) apunta al API local; si lo sirve el API, usa ruta relativa
+      const API =
+        (location.protocol === "file:" ? "http://localhost:3000" : "") +
+        "/api/todos";
+      const list = document.getElementById("list");
+      const form = document.getElementById("form");
+      const input = document.getElementById("title");
+      const count = document.getElementById("count");
+      const errorBox = document.getElementById("error");
+
+      async function request(url, options) {
+        try {
+          const res = await fetch(url, {
+            headers: { "Content-Type": "application/json" },
+            ...options,
+          });
+          if (!res.ok)
+            throw new Error(
+              (await res.json().catch(() => ({}))).error ||
+                "Error " + res.status,
+            );
+          errorBox.textContent = "";
+          return res.status === 204 ? null : res.json();
+        } catch (e) {
+          errorBox.textContent = "No se pudo completar la acción: " + e.message;
+          throw e;
+        }
+      }
+
+      function render(todos) {
+        list.innerHTML = "";
+        const pending = todos.filter((t) => !t.completed).length;
+        count.textContent = todos.length
+          ? `${pending} pendiente(s) de ${todos.length}`
+          : "";
+        if (!todos.length) {
+          const empty = document.createElement("li");
+          empty.className = "empty";
+          empty.textContent = "Aún no hay tareas. Agrega la primera arriba.";
+          list.appendChild(empty);
+          return;
+        }
+        todos.forEach((t) => {
+          const li = document.createElement("li");
+          if (t.completed) li.className = "done";
+
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.checked = t.completed;
+          cb.setAttribute("aria-label", "Completar: " + t.title);
+          cb.onchange = async () => {
+            await request(`${API}/${t.id}`, {
+              method: "PUT",
+              body: JSON.stringify({ completed: cb.checked }),
+            });
+            load();
+          };
+
+          const span = document.createElement("span");
+          span.textContent = t.title;
+
+          const del = document.createElement("button");
+          del.className = "del";
+          del.textContent = "Eliminar";
+          del.onclick = async () => {
+            await request(`${API}/${t.id}`, { method: "DELETE" });
+            load();
+          };
+
+          li.append(cb, span, del);
+          list.appendChild(li);
+        });
+      }
+
+      async function load() {
+        try {
+          render(await request(API));
+        } catch (_) {}
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const title = input.value.trim();
+        if (!title) return;
+        await request(API, { method: "POST", body: JSON.stringify({ title }) });
+        input.value = "";
+        load();
+      });
+
+      load();
+    </script>
+  </body>
+</html>
